@@ -1,0 +1,33 @@
+#include <cstdint>
+
+/* Values used for protocol ID and type. */
+#define POLI_PROTOCOL_ID 42
+
+// Declaram variabile pt three way handshake
+#define POLI_SYN 1
+#define POLI_SYN_ACK 2
+#define POLI_ACK 3
+
+// Declaram o variabila pt pachetele care transporta date din fisiere
+#define POLI_DATA 4
+
+// Portul pe care se accepta conexiuni
+#define POLI_LISTEN_PORT 8032
+
+/* Header for Data segments. Must be used in your implementation as it is. */
+struct __attribute__((packed)) poli_tcp_data_hdr {
+    uint8_t protocol_id;
+    uint8_t conn_id;
+    uint8_t type;
+    uint16_t seq_num;
+    uint16_t len;
+};
+
+/* Header for Control segments. Must be used in your implementation as it is. */
+struct __attribute__((packed)) poli_tcp_ctrl_hdr {
+    uint8_t protocol_id;
+    uint8_t conn_id;
+    uint8_t type;
+    uint16_t ack_num;
+    uint16_t recv_window;
+};
