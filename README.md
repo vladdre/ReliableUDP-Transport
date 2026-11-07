@@ -1,61 +1,84 @@
-Am implementat un protocol de transport simplificat pe UDP, inspirat din TCP, cu handshake in
-trei pasi, control de flux si retransmisii. Ideea a fost sa creez un mecanism sigur de trimitere
-datelor intre client si server.
+# Reliable UDP Transport Protocol
 
+A custom, reliable transport layer implementation built on top of UDP, inspired by TCP. Developed in C++ for the Communication Networks course.
 
-LIBSEND.CPP - PARTEA DE TRIMITERE
+This project implements a reliable data transfer protocol that handles packet loss, out-of-order delivery, flow control, and dynamic window scaling using a three-way handshake and sliding window mechanism.
 
-Am folosit un map cu conexiunile active, vectori pentru poll (data_fds si timer_fds) si
-poll_conn_map pentru a lega indewxul din poll cu id ul real. Variabilele globale sender_speed
-si sender_delay configureaza fereastra de transmisie si timeout ul.
+---
 
-seq_less compara circular numere de secventa pe 16 biti. bytes_in_flight calculeaza cati bytes
-sunt deja trimisi si neconfrmati. set_timer_interval seteaza timerul periodic pentru detectare
-de timeout uri.
+## Features
 
-compute_window calculeaza dimensiunea ferestrei pe baza BDP (bandwidth delay product). Minimum
-sunt 32 pachete, maximum 512. Bufferul de transmitere are 512 KB.
+- **Three-Way Handshake:** Connection setup using SYN, SYN-ACK, and ACK control segments.
+- **Flow Control & BDP Scaling:** Dynamic window size calculation based on Bandwidth-Delay Product (32 <= W <= 512 packets).
+- **Reliable Data Transfer:**
+  - Sequence numbers with circular comparisons (`seq_less`).
+  - Timeout-based retransmissions.
+  - **Fast Retransmit:** Triggered upon receiving 3 duplicate ACKs.
+  - **Out-of-Order Handling:** Receiver buffers out-of-order segments and delivers them sequentially.
+- **Multithreading & Synchronization:** Separate sender and receiver background handlers with mutexes and condition variables.
 
-try_send construieste pachete DATA si le trimnite daca fereastra permite. Pachetele sunt salvate
-in inflight pana cand primesc ACK. retransmit retransmite toate pachetele din inflight la
-timeout.
+---
 
-send_data e interfata pentru aplicatie. Adauga date in buffer si apeleaza try_send. Folosesc
-mutex pentru sincronizare cu sender_handler.
+## Protocol Architecture & Design
 
-sender_handler ruleza intr un thread. La timeout retransmite tot. La ACK, detecteza duplicate
-(la trei duplicate retransmite primul pachet). Daca ACK avansa, sterge pachete confirmate si
-continua sa trimita.
+### 1. Connection Establishment (Handshake)
 
-setup_connection face handshake ul. Trimit SYN, astpt SYN-ACK cu portul de date, trimit ACK.
-Apoi adaug conexiunea in poll si o salvez in map.
+```text
+  Client (Sender)                         Server (Receiver)
+        |                                         |
+        | -------------- SYN -------------------> |  (Listen port: POLI_LISTEN_PORT)
+        | <--- SYN-ACK (with assigned port) ----  |  (Spawns new data socket)
+        | -------------- ACK -------------------> |
+        |                                         |
+        | ============ DATA TRANSFER ============ |
+```
 
-init_sender incepe thread ul sender_handler cu parammetrii speed si delay.
+### 2. Sender Architecture (`LIBSEND.CPP`)
 
+- **Connection Management:** Active connections are tracked using map structures and mapped to poll file descriptors (`data_fds`, `timer_fds`).
+- **Flow & Transmission Control:**
+  - `compute_window()` adjusts the sending window based on BDP, capped between 32 and 512 packets (512 KB transmission buffer).
+  - Tracks in-flight bytes and sequence numbers via 16-bit circular arithmetic (`seq_less`).
+- **Sender Thread (`sender_handler`):**
+  - Monitors timeout events to retransmit all in-flight unacknowledged packets.
+  - Detects Fast Retransmit conditions (3 duplicate ACKs) to resend the first lost segment immediately.
 
-LIBRECV.CPP - PARTEA DE PRIMIRE
+### 3. Receiver Architecture (`LIBRECV.CPP`)
 
-recv_window_available_size calculeaza spatiul liber in buffer. send_ack trimite ACK cu seq
-asteptat si spatiul disponibil.
+- **Listening & Handshake (`wait4connect`):**
+  - Listens on `POLI_LISTEN_PORT`.
+  - Upon receiving SYN, binds a new socket to a system-assigned dynamic port and responds with SYN-ACK.
+- **Receiver Thread (`receiver_handler`):**
+  - Processes incoming DATA segments.
+  - Places in-order packets directly into the stream buffer; out-of-order packets are cached until missing gaps are filled.
+  - Sends ACKs updated with the expected sequence number and available receiver buffer capacity.
 
-deliver_in_order_packets verifica out_of_order si livreaza pachete in ordine cand sunt
-complete.
+---
 
-recv_data e interfata pentru aplicatie. Asteapta cu condition variable pana vine date, apoi
-le copiaza.
+## Building and Running
 
-receiver_handler rulaza intr un thread. La timeout trimite ACK. La pachet de data valid,
-adauga in buffer daca e in ordine sau in out_of_order daca nu. Dupa orice data trimite ACK.
+### Prerequisites
 
-wait4connect face handshake ul pe server. Astept SYN, creez socket nou pe port ales de sistem,
-trimit SYN ACK cu portul, astept ACK sau DATA pentru a finaliza. Adaug conexiunea in poll.
+- GCC / G++ compiler with C++11 support (or higher)
+- POSIX-compliant environment (Linux / WSL)
+- `pthread` library support
 
-init_receiver creeaza socket de listen pe POLI_LISTEN_PORT si porneste thread ul receiver_handler.
+### Compilation
 
+Build the sender and receiver executables using `make`:
 
-PROTOCOLLUL
+```bash
+make
+```
 
-Doua tipuri de segmente: CONTROL (SYN, SYN_ACK, ACK) si DATA. Handshake in trei pasi: SYN,
-SYN_ACK cu port de data, ACK. Dupa, datele se trimit in pachete cu seq. Receiverul confirma
-seq asteptat si spatiul din recv_window. Senderul retransmite la timeout sau triple ACK
-duplicate. Receiverul stochaza pachete out of order si le livreaza in ordine.
+### Usage Example
+
+1. **Run Receiver (Server):**
+   ```bash
+   ./receiver
+   ```
+
+2. **Run Sender (Client):**
+   ```bash
+   ./sender <server_ip> <speed_mbps> <delay_ms>
+   ```
