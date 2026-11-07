@@ -1,4 +1,3 @@
-```markdown
 # Reliable UDP Transport Protocol
 
 A custom, reliable transport layer implementation built on top of UDP, inspired by TCP. Developed in C++ for the Communication Networks course.
@@ -83,10 +82,3 @@ make
    ```bash
    ./sender <server_ip> <speed_mbps> <delay_ms>
    ```
-
----
-
-## License
-
-Distributed under the MIT License. See LICENSE for more information.
-```
